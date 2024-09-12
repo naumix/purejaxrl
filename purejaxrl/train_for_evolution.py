@@ -20,11 +20,13 @@ from wrappers import (
     ClipAction,
 )
 
+'''
 from absl import app, flags
 
 FLAGS = flags.FLAGS
 flags.DEFINE_string('env_name', 'ant', 'Environment name.')
 flags.DEFINE_integer('num_seeds', 5, 'Environment name.')
+'''
 
 def rational(x: jax.Array, a: float, b: float, c: float, d: float, e: float, f: float):
     num = a * x ** 3 + b * x ** 2 + c * x + d
@@ -67,7 +69,6 @@ class RationalActorCritic(nn.Module):
         critic = nn.Dense(1, kernel_init=orthogonal(1.0), bias_init=constant(0.0))(
             critic
         )
-
         return pi, jnp.squeeze(critic, axis=-1)
     
 
@@ -145,8 +146,9 @@ def make_train(config):
 
     def train(rng):
         # INIT NETWORK
-        network = ActorCritic(
-            env.action_space(env_params).shape[0], activation=config["ACTIVATION"]
+        network = RationalActorCritic(
+            env.action_space(env_params).shape[0], 
+            a=config["a"], b=config["b"], c=config["c"], d=config["d"], e=config["e"], f=config["f"], 
         )
         rng, _rng = jax.random.split(rng)
         init_x = jnp.zeros(env.observation_space(env_params).shape)
@@ -348,6 +350,21 @@ def vmap_train(config: dict, seed: jnp.array):
     out = train_jit(rng)
     return out['metrics']['returned_episode_returns'].mean(-1).mean(-1)
 
+#@jax.jit
+@functools.partial(jax.vmap, in_axes=(None, None, 0))
+def vmap_train_for_evolution(config: dict, seed: jnp.array, evolved_params: jnp.ndarray):
+    rng = jax.random.PRNGKey(seed)
+    config['a'] = evolved_params[0]
+    config['b'] = evolved_params[1]
+    config['c'] = evolved_params[2]
+    config['d'] = evolved_params[3]
+    config['e'] = evolved_params[4]
+    config['f'] = evolved_params[5]
+    train_jit = jax.jit(make_train(config))
+    out = train_jit(rng)
+    return out['metrics']['returned_episode_returns'].mean()
+
+'''
 def train_many_envs(config: dict, env_list: Sequence, seed: jnp.array):
     results = []
     for task in env_list:
@@ -361,7 +378,7 @@ def log_to_wandb_timestep(res, timestep):
         wandb.log({f'seed{seed}/timesteps': timestep, 
                    f'seed{seed}/rews': res[seed]}, step=timestep)
 
-def main(_):
+def train_for_evolution(_):
     wandb.init(
         config=FLAGS,
         entity='naumix',
@@ -405,3 +422,5 @@ def main(_):
 
 if __name__ == "__main__":
     app.run(main)    
+
+'''
