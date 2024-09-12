@@ -168,7 +168,7 @@ def make_train(config):
     config = {
         "LR": 3e-4,
         "NUM_ENVS": 8,
-        "NUM_STEPS": 512,
+        "NUM_STEPS": 256,
         "TOTAL_TIMESTEPS": 30000000,
         "UPDATE_EPOCHS": 4,
         "NUM_MINIBATCHES": 16,
@@ -270,7 +270,9 @@ def make_train(config):
         buffer = calculate_gae_scan(buffer, discount=config['GAMMA'], gae_lambda=config['GAE_LAMBDA'])
 
         # UPDATE NETWORK
+        @jax.jit
         def _update_epoch(update_state, unused):
+            @jax.jit
             def _update_minbatch(train_state, minibatches):
                 
                 def _loss_fn(params, minibatches):
