@@ -6,6 +6,10 @@ import optax
 from flax.linen.initializers import constant, orthogonal
 from typing import Sequence, NamedTuple, Any
 from flax.training.train_state import TrainState
+import functools
+
+import wandb
+
 import distrax
 from wrappers import (
     LogWrapper,
@@ -15,6 +19,12 @@ from wrappers import (
     NormalizeVecReward,
     ClipAction,
 )
+
+from absl import app, flags
+
+FLAGS = flags.FLAGS
+flags.DEFINE_string('env_name', 'ant', 'Environment name.')
+flags.DEFINE_integer('num_seeds', 5, 'Environment name.')
 
 
 class ActorCritic(nn.Module):
@@ -286,14 +296,40 @@ def make_train(config):
         return {"runner_state": runner_state, "metrics": metric}
 
     return train
+    
+@functools.partial(jax.vmap, in_axes=(None, 0))
+def vmap_train(config: dict, seed: jnp.array):
+    rng = jax.random.PRNGKey(seed)
+    train_jit = jax.jit(make_train(config))
+    out = train_jit(rng)
+    return out['metrics']['returned_episode_returns'].mean(-1).mean(-1)
 
+def train_many_envs(config: dict, env_list: Sequence, seed: jnp.array):
+    results = []
+    for task in env_list:
+        config["ENV_NAME"] = task
+        res = vmap_train(config, seed)
+        results.append(np.array(res))
+    return results       
 
-if __name__ == "__main__":
+def log_to_wandb_timestep(res, timestep):
+    for seed in range(FLAGS.num_seeds):
+        wandb.log({f'seed{seed}/timesteps': timestep, 
+                   f'seed{seed}/rews': res[seed]}, step=timestep)
+
+def main(_):
+    wandb.init(
+        config=FLAGS,
+        entity='naumix',
+        project='PPO_Parallel_new',
+        group=f'{FLAGS.env_name}',
+        name=f'test')
+    
     config = {
         "LR": 3e-4,
-        "NUM_ENVS": 32,
-        "NUM_STEPS": 100,
-        "TOTAL_TIMESTEPS": 1000000,
+        "NUM_ENVS": 512,
+        "NUM_STEPS": 64,
+        "TOTAL_TIMESTEPS": 30000000,
         "UPDATE_EPOCHS": 4,
         "NUM_MINIBATCHES": 32,
         "GAMMA": 0.99,
@@ -303,12 +339,25 @@ if __name__ == "__main__":
         "VF_COEF": 0.5,
         "MAX_GRAD_NORM": 0.5,
         "ACTIVATION": "tanh",
-        "ENV_NAME": "halfcheetah",
+        #"ENV_NAME": "halfcheetah",
         "ANNEAL_LR": False,
         "NORMALIZE_ENV": True,
-        "DEBUG": True,
+        "DEBUG": False,
     }
-    rng = jax.random.PRNGKey(30)
-    train_jit = jax.jit(make_train(config))
-    out = train_jit(rng)
-    out['metrics']['returned_episode_returns']
+    
+    
+    config["ENV_NAME"] = FLAGS.env_name
+    #env_list = ['halfcheetah', 'hopper']
+    seed = jnp.arange(2)
+    seed = jnp.arange(FLAGS.num_seeds)
+    res = vmap_train(config, seed)
+    #res = train_many_envs(config, env_list, seed)
+    res = np.array(res)
+    for timestep in range(res.shape[-1]):
+        #print(res[:,timestep])
+        log_to_wandb_timestep(res[:,timestep], timestep)
+        
+        
+
+if __name__ == "__main__":
+    app.run(main)    
