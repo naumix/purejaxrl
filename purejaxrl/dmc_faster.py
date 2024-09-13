@@ -157,7 +157,7 @@ config = {
     "VF_COEF": 0.5,
     "MAX_GRAD_NORM": 0.5,
     "ACTIVATION": "tanh",
-    "ENV_NAME": "cartpole-swingup",
+    "ENV_NAME": "walker-stand",
     "ANNEAL_LR": False,
     "NORMALIZE_ENV": True,
     "DEBUG": False,
@@ -251,7 +251,6 @@ for update in range(config["NUM_UPDATES"]):
     # UPDATE NETWORK
     @jax.jit
     def _update_epoch(update_state, unused):
-        @jax.jit
         def _update_minbatch(train_states, minibatches):
             actor_state, critic_state = train_states
             def actor_loss_fn(actor_params, minibatches):
