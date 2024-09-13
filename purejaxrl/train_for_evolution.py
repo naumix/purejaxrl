@@ -28,28 +28,28 @@ flags.DEFINE_string('env_name', 'ant', 'Environment name.')
 flags.DEFINE_integer('num_seeds', 5, 'Environment name.')
 '''
 
-def rational(x: jax.Array, a: float, b: float, c: float, d: float, e: float, f: float):
+def rational(x: jax.Array, a: jnp.ndarray, b: jnp.ndarray, c: jnp.ndarray, d: jnp.ndarray, e: jnp.ndarray, f: jnp.ndarray):
     num = a * x ** 3 + b * x ** 2 + c * x + d
     denom = jnp.abs(e * x ** 2) + jnp.abs(f * x) + 1
     return num/denom
 
 class RationalActorCritic(nn.Module):
     action_dim: Sequence[int]
-    a: int = 1
-    b: int = 1
-    c: int = 1
-    d: int = 1
-    e: int = 1
-    f: int = 1
+    a: jnp.ndarray
+    b: jnp.ndarray
+    c: jnp.ndarray
+    d: jnp.ndarray
+    e: jnp.ndarray
+    f: jnp.ndarray
 
     @nn.compact
     def __call__(self, x):
         actor_mean = nn.Dense(
-            256, kernel_init=orthogonal(np.sqrt(2)), bias_init=constant(0.0)
+            128, kernel_init=orthogonal(np.sqrt(2)), bias_init=constant(0.0)
         )(x)
         actor_mean = rational(actor_mean, self.a, self.b, self.c, self.d, self.e, self.f)
         actor_mean = nn.Dense(
-            256, kernel_init=orthogonal(np.sqrt(2)), bias_init=constant(0.0)
+            128, kernel_init=orthogonal(np.sqrt(2)), bias_init=constant(0.0)
         )(actor_mean)
         actor_mean = rational(actor_mean, self.a, self.b, self.c, self.d, self.e, self.f)
         actor_mean = nn.Dense(
@@ -59,11 +59,11 @@ class RationalActorCritic(nn.Module):
         pi = distrax.MultivariateNormalDiag(actor_mean, jnp.exp(actor_logtstd))
 
         critic = nn.Dense(
-            256, kernel_init=orthogonal(np.sqrt(2)), bias_init=constant(0.0)
+            128, kernel_init=orthogonal(np.sqrt(2)), bias_init=constant(0.0)
         )(x)
         critic = nn.relu(critic)
         critic = nn.Dense(
-            256, kernel_init=orthogonal(np.sqrt(2)), bias_init=constant(0.0)
+            128, kernel_init=orthogonal(np.sqrt(2)), bias_init=constant(0.0)
         )(critic)
         critic = nn.relu(critic)
         critic = nn.Dense(1, kernel_init=orthogonal(1.0), bias_init=constant(0.0))(
@@ -83,11 +83,11 @@ class ActorCritic(nn.Module):
         else:
             activation = nn.tanh
         actor_mean = nn.Dense(
-            256, kernel_init=orthogonal(np.sqrt(2)), bias_init=constant(0.0)
+            128, kernel_init=orthogonal(np.sqrt(2)), bias_init=constant(0.0)
         )(x)
         actor_mean = activation(actor_mean)
         actor_mean = nn.Dense(
-            256, kernel_init=orthogonal(np.sqrt(2)), bias_init=constant(0.0)
+            128, kernel_init=orthogonal(np.sqrt(2)), bias_init=constant(0.0)
         )(actor_mean)
         actor_mean = activation(actor_mean)
         actor_mean = nn.Dense(
@@ -97,11 +97,11 @@ class ActorCritic(nn.Module):
         pi = distrax.MultivariateNormalDiag(actor_mean, jnp.exp(actor_logtstd))
 
         critic = nn.Dense(
-            256, kernel_init=orthogonal(np.sqrt(2)), bias_init=constant(0.0)
+            128, kernel_init=orthogonal(np.sqrt(2)), bias_init=constant(0.0)
         )(x)
         critic = activation(critic)
         critic = nn.Dense(
-            256, kernel_init=orthogonal(np.sqrt(2)), bias_init=constant(0.0)
+            128, kernel_init=orthogonal(np.sqrt(2)), bias_init=constant(0.0)
         )(critic)
         critic = activation(critic)
         critic = nn.Dense(1, kernel_init=orthogonal(1.0), bias_init=constant(0.0))(

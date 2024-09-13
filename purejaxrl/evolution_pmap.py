@@ -23,11 +23,11 @@ if __name__ == "__main__":
         entity='naumix',
         project='Evolution_new',
         group=f'HalfCheetah',
-        name=f'New_Test2')
+        name=f'evolution')
     
-    max_steps = 20000000
-    popsize = 16
-    num_generations = 100
+    max_steps = 25000000
+    popsize = 32
+    num_generations = 150
     
     param_reshaper = ParameterReshaper(jnp.zeros(6))
     strategy = CMA_ES(popsize=popsize, num_dims=param_reshaper.total_params, elite_ratio=0.5)
@@ -112,6 +112,39 @@ if __name__ == "__main__":
         train_jit = jax.jit(make_train(config))
         out = train_jit(rng)
         return out['metrics']['returned_episode_returns'].mean()
+    
+    @jax.jit
+    @functools.partial(jax.vmap, in_axes=(None, 0))
+    def vmap_train_for_evolution_humanoid(seed: int, evolved_params: jnp.ndarray):
+        config = {
+            "LR": 3e-4,
+            "NUM_ENVS": 512,
+            "NUM_STEPS": 64,
+            "TOTAL_TIMESTEPS": max_steps,
+            "UPDATE_EPOCHS": 3,
+            "NUM_MINIBATCHES": 32,
+            "GAMMA": 0.99,
+            "GAE_LAMBDA": 0.95,
+            "CLIP_EPS": 0.2,
+            "ENT_COEF": 0.0,
+            "VF_COEF": 0.5,
+            "MAX_GRAD_NORM": 0.5,
+            "ACTIVATION": "tanh",
+            "ENV_NAME": "humanoid",
+            "ANNEAL_LR": False,
+            "NORMALIZE_ENV": True,
+            "DEBUG": False,
+        }
+        rng = jax.random.PRNGKey(seed)
+        config['a'] = evolved_params[0]
+        config['b'] = evolved_params[1]
+        config['c'] = evolved_params[2]
+        config['d'] = evolved_params[3]
+        config['e'] = evolved_params[4]
+        config['f'] = evolved_params[5]
+        train_jit = jax.jit(make_train(config))
+        out = train_jit(rng)
+        return out['metrics']['returned_episode_returns'].mean()
 
     @jax.jit 
     def evolve(rng: jax.random.PRNGKey, state: evosax.strategies.cma_es.EvoState, log: dict, seed: int):
@@ -122,7 +155,8 @@ if __name__ == "__main__":
         evolved_params = transform_x(x)
         fitness1 = vmap_train_for_evolution_cheetah(seed, evolved_params)
         fitness2 = vmap_train_for_evolution_ant(seed, evolved_params)
-        fitness = (fitness1 + fitness2) / 2
+        fitness3 = vmap_train_for_evolution_humanoid(seed, evolved_params)
+        fitness = (fitness1 + fitness2 + fitness3) / 3
         #fitness = proj_mems.rewards.mean(-1).max(-1)     
         #proj_mems.rewards.shape
         fit_re = fit_shaper.apply(x, fitness)
@@ -140,5 +174,4 @@ if __name__ == "__main__":
         wandb.log({"Fitness": fitness.mean(),
                    "Best Fitness": fitness.max(),
                    "Best Value": x[jnp.argmax(fitness)],
-                   "Variance": x.var()}, step=gen)
-
+                   "Variance": x.var(0).mean()}, step=gen)
