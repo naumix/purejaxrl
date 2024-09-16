@@ -14,7 +14,9 @@ import evosax
 import numpy as np
 
 from train_for_evolution import make_train
-
+from jax.sharding import Mesh, PartitionSpec as P
+from jax.experimental import mesh_utils
+from jax.experimental.shard_map import shard_map
 
 if __name__ == "__main__":
     
@@ -46,10 +48,16 @@ if __name__ == "__main__":
     def transform_x(x):
         x = nn.tanh(x)
         return x
+      
+    N_DEVICES = jax.local_device_count()
+    print(N_DEVICES)
+    devices = mesh_utils.create_device_mesh(N_DEVICES)
+    mesh = Mesh(devices, axis_names=('i'))
         
+    @functools.partial(shard_map, mesh=mesh, in_specs=(P('i'), P('i')), out_specs=(P('i')))
     @jax.jit
-    @functools.partial(jax.vmap, in_axes=(None, 0))
-    def vmap_train_for_evolution_cheetah(seed: int, evolved_params: jnp.ndarray):
+    @functools.partial(jax.vmap, in_axes=(0, 0))
+    def vmap_train_for_evolution_cheetah(rng: jax.random.PRNGKey, evolved_params: jnp.ndarray):
         config = {
             "LR": 3e-4,
             "NUM_ENVS": 512,
@@ -69,7 +77,6 @@ if __name__ == "__main__":
             "NORMALIZE_ENV": True,
             "DEBUG": False,
         }
-        rng = jax.random.PRNGKey(seed)
         config['a'] = evolved_params[0]
         config['b'] = evolved_params[1]
         config['c'] = evolved_params[2]
@@ -80,9 +87,10 @@ if __name__ == "__main__":
         out = train_jit(rng)
         return out['metrics']['returned_episode_returns'].mean()
     
+    @functools.partial(shard_map, mesh=mesh, in_specs=(P('i'), P('i')), out_specs=(P('i')))
     @jax.jit
-    @functools.partial(jax.vmap, in_axes=(None, 0))
-    def vmap_train_for_evolution_ant(seed: int, evolved_params: jnp.ndarray):
+    @functools.partial(jax.vmap, in_axes=(0, 0))
+    def vmap_train_for_evolution_ant(rng: jax.random.PRNGKey, evolved_params: jnp.ndarray):
         config = {
             "LR": 3e-4,
             "NUM_ENVS": 512,
@@ -102,7 +110,6 @@ if __name__ == "__main__":
             "NORMALIZE_ENV": True,
             "DEBUG": False,
         }
-        rng = jax.random.PRNGKey(seed)
         config['a'] = evolved_params[0]
         config['b'] = evolved_params[1]
         config['c'] = evolved_params[2]
@@ -113,9 +120,10 @@ if __name__ == "__main__":
         out = train_jit(rng)
         return out['metrics']['returned_episode_returns'].mean()
     
+    @functools.partial(shard_map, mesh=mesh, in_specs=(P('i'), P('i')), out_specs=(P('i')))
     @jax.jit
-    @functools.partial(jax.vmap, in_axes=(None, 0))
-    def vmap_train_for_evolution_humanoid(seed: int, evolved_params: jnp.ndarray):
+    @functools.partial(jax.vmap, in_axes=(0, 0))
+    def vmap_train_for_evolution_humanoid(rng: jax.random.PRNGKey, evolved_params: jnp.ndarray):
         config = {
             "LR": 3e-4,
             "NUM_ENVS": 512,
@@ -135,7 +143,6 @@ if __name__ == "__main__":
             "NORMALIZE_ENV": True,
             "DEBUG": False,
         }
-        rng = jax.random.PRNGKey(seed)
         config['a'] = evolved_params[0]
         config['b'] = evolved_params[1]
         config['c'] = evolved_params[2]
@@ -145,32 +152,29 @@ if __name__ == "__main__":
         train_jit = jax.jit(make_train(config))
         out = train_jit(rng)
         return out['metrics']['returned_episode_returns'].mean()
-
+    
     @jax.jit 
     def evolve(rng: jax.random.PRNGKey, state: evosax.strategies.cma_es.EvoState, log: dict, seed: int):
-        N_DEVICES = jax.local_device_count()
-        print(N_DEVICES)
-        rng, rng_ask, rng_eval = jax.random.split(rng, 3)
+        rng, rng_ask, rng_eval, rng_fitness = jax.random.split(rng, 4)
         x, state = strategy.ask(rng_ask, state, es_params)
         evolved_params = transform_x(x)
-        fitness1 = vmap_train_for_evolution_cheetah(seed, evolved_params)
-        fitness2 = vmap_train_for_evolution_ant(seed, evolved_params)
-        fitness3 = vmap_train_for_evolution_humanoid(seed, evolved_params)
+        rng_fitness = jax.random.split(rng_fitness, evolved_params.shape[0])
+        fitness1 = vmap_train_for_evolution_cheetah(rng_fitness, evolved_params)
+        fitness2 = vmap_train_for_evolution_ant(rng_fitness, evolved_params)
+        fitness3 = vmap_train_for_evolution_humanoid(rng_fitness, evolved_params)
         fitness = (fitness1 + fitness2 + fitness3) / 3
-        #fitness = proj_mems.rewards.mean(-1).max(-1)     
-        #proj_mems.rewards.shape
         fit_re = fit_shaper.apply(x, fitness)
         state = strategy.tell(x, fit_re, state, es_params)
         #log = es_logging.update(log, x, fitness)
         return rng, state, log, fitness, x
-    
+
     for gen in range(num_generations):
         rng, state, log, fitness, x = evolve(rng, state, log, gen)
         log_data[popsize*gen:popsize*gen+popsize, 0:6] = np.array(x)
         log_data[popsize*gen:popsize*gen+popsize, 6] = np.array(fitness)
         np.savetxt("test.csv", log_data, delimiter=",")
         
-        print(f"Generation: {gen}, Best: {log['log_top_1'][gen]}, Fitness: {fitness.mean()}")
+        print(f"Generation: {gen}, Fitness: {fitness.mean()}")
         wandb.log({"Fitness": fitness.mean(),
                    "Best Fitness": fitness.max(),
                    "Best Value": x[jnp.argmax(fitness)],

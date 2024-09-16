@@ -1,12 +1,16 @@
-jax>=0.2.26
-jaxlib>=0.1.74
+scipy==1.12.0
+numpy==1.26.4
+flax
+dm_control
+gymnasium
+tensorflow-probability
+brax
+absl-py >= 0.12.0
+wandb >= 0.12.14
 gymnax
 evosax
 distrax
 optax
-flax
-numpy
-brax
-wandb
-flashbax
 navix
+jax[cuda11_pip]==0.4.25
+-f https://storage.googleapis.com/jax-releases/jax_cuda_releases.html
